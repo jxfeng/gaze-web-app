@@ -4,6 +4,7 @@ import gaze.application.ApplicationSettings;
 import gaze.video.entity.AppError;
 import gaze.video.entity.Camera;
 import gaze.video.entity.Session;
+import gaze.video.entity.User;
 import gaze.video.exception.ApplicationException;
 import gaze.video.handler.CameraHandler;
 import gaze.video.handler.SessionAuthenticator;
@@ -35,33 +36,61 @@ public class RestEasyCamera {
 	
 	@POST
 	@Path("/{cameraId}")
+	@Consumes("application/json")
 	@Produces("application/json")
 	public Response createNewCamera(@HeaderParam(ApplicationSettings.SESSION_HTTP_HEADER) String sessionId,
-			@PathParam("cameraId") String cameraId) {
+			@PathParam("cameraId") String cameraId, String jsonInput) {
 		try {
 			
 			SessionAuthenticator authenticator = new DySessionAuthenticator();
 			CameraHandler cameraHandler = new DyCameraHandler();
+			Camera camera = null;
 			
-			//Make sure session is valid
+			//Check if sessionId was passed in
 			if(sessionId == null) {
 				LOG.error("No session id provided in the request");
 				throw ApplicationException.SESSION_INVALID_ID;
 			}
+			
+			//Make sure session is valid
 			Session session = authenticator.getSession(sessionId);
+			if(!authenticator.isSessionValid(session)) {
+				throw ApplicationException.SESSION_EXPIRED;
+			}
+			
+			//Extract user from session
 			String userId = session.getUserId();
 			
-			//TODO: Make sure user is active
+			//Process user input
+			if(jsonInput != null) {
+				try {
+					camera = (new Gson()).fromJson(jsonInput, Camera.class);
+				} catch(Exception e) {
+					LOG.error("Could not construct Camera from JSON input: " + jsonInput);
+					throw ApplicationException.CAMERA_INVALID_INPUT;
+				}
+			}
+			boolean cameraExists = cameraHandler.doesExist(userId, cameraId);
 			
 			//Check if camera already exists
-			if(cameraHandler.doesExist(userId, cameraId)) {
+			if(cameraExists && jsonInput == null) {
+				LOG.error("No data provided to update camera details");
 				throw ApplicationException.CAMERA_ALREADY_EXISTS;
 			}
 			
+			//Camera exists so just update details
+			if(cameraExists) {
+				camera.setUserId(userId);
+				camera.setCameraId(cameraId);
+				camera = cameraHandler.updateCamera(camera);
+				return Response.status(Status.OK).entity(new Gson().toJson(camera)).build();
+			}
+			
 			//Create new camera
-			Camera camera = cameraHandler.createNewCamera(userId, cameraId);
-			String msg = new Gson().toJson(camera);
-			return Response.status(Status.OK).entity(msg).build();
+			camera.setUserId(userId);
+			camera.setCameraId(cameraId);
+			camera = cameraHandler.createNewCamera(camera);
+			return Response.status(Status.OK).entity(new Gson().toJson(camera)).build();
 			
 		} catch(ApplicationException exception) {
 			LOG.error(exception.getErrorCode().toString(), exception.getCause());
@@ -80,12 +109,17 @@ public class RestEasyCamera {
 			SessionAuthenticator authenticator = new DySessionAuthenticator();
 			CameraHandler cameraHandler = new DyCameraHandler();
 			
-			//Make sure session is valid
+			//Check if sessionId was passed in
 			if(sessionId == null) {
 				LOG.error("No session id provided in the request");
 				throw ApplicationException.SESSION_INVALID_ID;
 			}
+			
+			//Make sure session is valid
 			Session session = authenticator.getSession(sessionId);
+			if(!authenticator.isSessionValid(session)) {
+				throw ApplicationException.SESSION_EXPIRED;
+			}
 			String sessionUserId = session.getUserId();
 			
 			//Get info on the camera
@@ -107,30 +141,84 @@ public class RestEasyCamera {
 		}
 	}
 	
-	
-	@GET
-	@Path("/list")
+	@POST
+	@Path("/{cameraId}/commit/{imageTs}")
 	@Produces("application/json")
-	public Response listCameras(@HeaderParam(ApplicationSettings.SESSION_HTTP_HEADER) String sessionId,
-			@QueryParam("start") String startKey, @QueryParam("limit") Integer limit) {
+	public Response updateImageCommit(@HeaderParam(ApplicationSettings.SESSION_HTTP_HEADER) String sessionId,
+			@PathParam("cameraId") String cameraId, @PathParam("imageTs") Long imageTs) {
 		try {
 			Gson gson = new Gson();
 			SessionAuthenticator authenticator = new DySessionAuthenticator();
 			CameraHandler cameraHandler = new DyCameraHandler();
 			
-			//Make sure session is valid
+			//Check if sessionId was passed in
 			if(sessionId == null) {
 				LOG.error("No session id provided in the request");
 				throw ApplicationException.SESSION_INVALID_ID;
 			}
+			
+			//Make sure session is valid
 			Session session = authenticator.getSession(sessionId);
+			if(!authenticator.isSessionValid(session)) {
+				throw ApplicationException.SESSION_EXPIRED;
+			}
+			String sessionUserId = session.getUserId();
+			
+			//Check if timestamp was passed in
+			if(imageTs == null || imageTs < 0) {
+				LOG.error("Invalid timestamp passed in for commit");
+				throw ApplicationException.CAMERA_INVALID_COMMIT_TS;
+			}
+			
+			//Get info on the camera
+			if(sessionUserId != null) {
+				if(cameraId != null) {
+					Camera camera = cameraHandler.getCameraDetails(sessionUserId, cameraId);
+					camera = cameraHandler.updateLatestImageTimestamp(sessionUserId, cameraId, imageTs);
+					return Response.status(Status.OK).entity(gson.toJson(camera)).build();
+				} else {
+					throw ApplicationException.CAMERA_INVALID_CAMERA_ID;
+				}
+			} else {
+				throw ApplicationException.USER_INVALID_USER_ID;
+			}
+			
+		} catch(ApplicationException exception) {
+			LOG.error(exception.getErrorCode().toString(), exception.getCause());
+			AppError error = new AppError(exception.getErrorCode(), exception.getMessage());
+			return Response.status(Status.INTERNAL_SERVER_ERROR).entity(new Gson().toJson(error)).build();
+		}
+	}
+	
+	@GET
+	@Path("/list")
+	@Produces("application/json")
+	public Response listCameras(@HeaderParam(ApplicationSettings.SESSION_HTTP_HEADER) String sessionId,
+			@QueryParam("start") String startKey, @QueryParam("limit") Integer limit, @QueryParam("reverse") Boolean reverse) {
+		try {
+
+			SessionAuthenticator authenticator = new DySessionAuthenticator();
+			CameraHandler cameraHandler = new DyCameraHandler();
+			
+			//Check if sessionId was passed in
+			if(sessionId == null) {
+				LOG.error("No session id provided in the request");
+				throw ApplicationException.SESSION_INVALID_ID;
+			}
+			
+			//Make sure session is valid
+			Session session = authenticator.getSession(sessionId);
+			if(!authenticator.isSessionValid(session)) {
+				throw ApplicationException.SESSION_EXPIRED;
+			}
 			String sessionUserId = session.getUserId();
 			
 			//Get optional parameters
 			limit = (limit != null) ? limit : 10;
+			reverse = (reverse != null) ? reverse : false; 
 			
 			//Get list
-			List<Camera> cameras = cameraHandler.listCameras(sessionUserId, startKey, limit);
+			List<Camera> cameras = cameraHandler.listCameras(sessionUserId, startKey, reverse, limit);
 			
 			//Cursor - opaque to me but will be interpreted by the underlying implementation
 			return Response.status(Status.OK).entity(new Gson().toJson(cameras)).build();

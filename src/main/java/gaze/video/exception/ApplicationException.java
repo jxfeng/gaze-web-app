@@ -7,6 +7,7 @@ public class ApplicationException extends Exception {
 	public static final ApplicationException NO_SUCH_SESSION;
 	public static final ApplicationException SESSION_INVALID_ARGUMENTS;
 	public static final ApplicationException SESSION_INVALID_ID;
+	public static final ApplicationException SESSION_EXPIRED;
 	
 	public static final ApplicationException NO_SUCH_USER;
 	public static final ApplicationException USER_INVALID_PASSWORD;
@@ -20,6 +21,8 @@ public class ApplicationException extends Exception {
 	public static final ApplicationException CAMERA_INVALID_CAMERA_ID;
 	public static final ApplicationException CAMERA_ALREADY_EXISTS;
 	public static final ApplicationException CAMERA_QUERY_FAILED;
+	public static final ApplicationException CAMERA_INVALID_INPUT;
+	public static final ApplicationException CAMERA_INVALID_COMMIT_TS;
 	
 	public static final ApplicationException NO_SUCH_IMAGE;
 	public static final ApplicationException IMAGE_INVALID_CAMERA_ID;
@@ -38,6 +41,7 @@ public class ApplicationException extends Exception {
 		NO_SUCH_SESSION = new ApplicationException(5001, "No such session");
 		SESSION_INVALID_ARGUMENTS = new ApplicationException(5002, "Invalid arguments to session start request");
 		SESSION_INVALID_ID = new ApplicationException(5003, "Invalid or missing session id");
+		SESSION_EXPIRED = new ApplicationException(5004, "Session expired");
 		//USER - 6000
 		NO_SUCH_USER = new ApplicationException(6001, "No such user");
 		USER_INVALID_PASSWORD = new ApplicationException(6002, "Invalid password");
@@ -51,6 +55,8 @@ public class ApplicationException extends Exception {
 		CAMERA_INVALID_CAMERA_ID = new ApplicationException(7002, "Invalid camera id");
 		CAMERA_ALREADY_EXISTS = new ApplicationException(7003, "Camera id already exists");
 		CAMERA_QUERY_FAILED = new ApplicationException(7004, "Camera query failed");
+		CAMERA_INVALID_INPUT = new ApplicationException(7005, "Camera invalid input");
+		CAMERA_INVALID_COMMIT_TS = new ApplicationException(7006, "Camera invalid timestamp");
 		//IMAGE - 8000
 		NO_SUCH_IMAGE = new ApplicationException(8001, "No such image");
 		IMAGE_INVALID_CAMERA_ID = new ApplicationException(8002, "Invalid camera id");

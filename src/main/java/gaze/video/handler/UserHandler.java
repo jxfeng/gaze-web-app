@@ -10,7 +10,7 @@ public interface UserHandler {
 	 * Creates a new user and return its details
 	 * @return
 	 */
-	public User createNewUser(String userId, String email, String password) throws ApplicationException;
+	public User createNewUser(String userId, String email, String password, User.UserRole role) throws ApplicationException;
 	
 	/**
 	 * Checks if user already exists in the database
@@ -26,6 +26,15 @@ public interface UserHandler {
 	 * @return
 	 */
 	public User getUserDetails(String userId) throws ApplicationException;
+	
+	/**
+	 * Updates user details
+	 * @param user
+	 * @return
+	 * @throws ApplicationException
+	 */
+	public User updateUserDetails(User user) throws ApplicationException;
+	
 	
 	/**
 	 * Delete the user

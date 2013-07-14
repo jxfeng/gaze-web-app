@@ -14,6 +14,7 @@ public class DynamoDBUser {
 	private String lastName;
 	private String emailAddress;
 	private String userState;
+	private String userRole;
 	
 	@DynamoDBHashKey(attributeName="userId")
 	public String getUserId() {
@@ -61,12 +62,21 @@ public class DynamoDBUser {
 	}
 	
 	@DynamoDBAttribute(attributeName="state")
-	private String getUserState() {
+	public String getUserState() {
 		return userState;
 	}
 
-	private void setUserState(String userState) {
+	public void setUserState(String userState) {
 		this.userState = userState;
+	}
+	
+	@DynamoDBAttribute(attributeName="role")
+	public String getUserRole() {
+		return userRole;
+	}
+
+	public void setUserRole(String userRole) {
+		this.userRole = userRole;
 	}
 
 }

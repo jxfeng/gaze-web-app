@@ -11,6 +11,7 @@ public class DynamoDBSession {
 	private String userId;
 	private Long startTime;
 	private Long lastRequestTime;
+	private String state;
 	
 	@DynamoDBHashKey(attributeName="sessionId")
 	public String getSessionId() {
@@ -46,6 +47,15 @@ public class DynamoDBSession {
 
 	public void setLastRequestTime(Long lastRequestTime) {
 		this.lastRequestTime = lastRequestTime;
+	}
+	
+	@DynamoDBAttribute(attributeName="state")
+	public String getState() {
+		return state;
+	}
+	
+	public void setState(String state) {
+		this.state = state;
 	}
 
 }

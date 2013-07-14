@@ -1,13 +1,9 @@
 package gaze.video.handler.dydb;
 
-import gaze.video.entity.Session;
 import gaze.video.entity.User;
-import gaze.video.entity.dynamodb.DynamoDBSession;
 import gaze.video.entity.dynamodb.DynamoDBUser;
 import gaze.video.exception.ApplicationException;
 import gaze.video.handler.UserHandler;
-
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +31,15 @@ public class DyUserHandler implements UserHandler {
 	}
 
 	@Override
-	public User createNewUser(String userId, String email, String password) throws ApplicationException {
-		//TODO: Need to figure out duplicate emails, or reset by email address
+	public User createNewUser(String userId, String email, String password, User.UserRole role) throws ApplicationException {
+		//TODO: Think of what happens if two people create the same user at the same time
+		DynamoDBMapper mapper = new DynamoDBMapper(client);
+		
 		DynamoDBUser dUser = new DynamoDBUser();
 		dUser.setUserId(userId);
 		dUser.setEmail(email);
 		dUser.setPassword(password);
-		
-		DynamoDBMapper mapper = new DynamoDBMapper(client);
+		dUser.setUserRole(role.toString());
 		mapper.save(dUser);
 		
 		User user = DyUserEntityBuilder.build(dUser);
@@ -63,23 +60,51 @@ public class DyUserHandler implements UserHandler {
 	
 	@Override
 	public User getUserDetails(String userId) throws ApplicationException {
-		//TODO: Need to make sure the user checks his own account
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
 		DynamoDBUser dUser = mapper.load(DynamoDBUser.class, userId);
 		if(dUser == null) {
 			LOG.error("User " + userId + " was not found in the database");
-			throw ApplicationException.NO_SUCH_SESSION;
+			throw ApplicationException.NO_SUCH_USER;
 		}
 		
 		User user = DyUserEntityBuilder.build(dUser);
 		return user;
 	}
 
+
 	@Override
-	public void deleteUser(String userId) throws ApplicationException {
-		// TODO Auto-generated method stub
+	public User updateUserDetails(User user) throws ApplicationException {
+		DynamoDBMapper mapper = new DynamoDBMapper(client);
+		DynamoDBUser dUser = mapper.load(DynamoDBUser.class, user.getUserId());
+		if(dUser == null) {
+			LOG.error("User " + user.getUserId() + " was not found in the database");
+			throw ApplicationException.NO_SUCH_SESSION;
+		}
+		
+		if(user.getFirstName() != null) {
+			dUser.setFirstName(user.getFirstName());
+		}
+		if(user.getLastName() != null) {
+			dUser.setLastName(user.getLastName());
+		}
+		if(user.getPassword() != null) {
+			dUser.setPassword(user.getPassword());
+		}
+		if(user.getEmail() != null) {
+			dUser.setEmail(user.getEmail());
+		}
+
+		mapper.save(dUser);
+		user = DyUserEntityBuilder.build(dUser);
+		return user;
 		
 	}
+	
+	@Override
+	public void deleteUser(String userId) throws ApplicationException {
+		throw new RuntimeException("Not implemented yet");
+	}
+
 
 
 }

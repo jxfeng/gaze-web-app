@@ -42,6 +42,7 @@ public class DySessionHandler implements SessionHandler {
 		dSession.setUserId(User.INVALID_USER_ID);
 		dSession.setStartTime(System.currentTimeMillis());
 		dSession.setLastRequestTime(System.currentTimeMillis());
+		dSession.setState(Session.SessionState.ACTIVE.toString());
 		
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
 		mapper.save(dSession);
@@ -59,6 +60,7 @@ public class DySessionHandler implements SessionHandler {
 		dSession.setUserId(userId);
 		dSession.setStartTime(System.currentTimeMillis());
 		dSession.setLastRequestTime(System.currentTimeMillis());
+		dSession.setState(Session.SessionState.ACTIVE.toString());
 		
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
 		mapper.save(dSession);

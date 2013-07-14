@@ -180,13 +180,6 @@ public class RestEasyImage {
 				Image updatedImage = imageHandler.updateImageState(shardId, imageTS, Image.ImageState.LOADED);
 				LOG.info("Image camera: " + cameraId + " imageTimestamp: " + imageTS + " is now loaded");
 				
-				//Update camera latest image timestamp
-				Camera camera = cameraHandler.updateLatestImageTimestamp(userId, cameraId, imageTS);
-				if(camera == null) {
-					LOG.error("Could not update latest image timestamp for camera userId: " + userId + " cameraId: " + cameraId);
-					throw ApplicationException.CAMERA_INVALID_CAMERA_ID;
-				}
-				
 				return Response.status(Status.OK).entity(new Gson().toJson(updatedImage)).build();
 			} 
 

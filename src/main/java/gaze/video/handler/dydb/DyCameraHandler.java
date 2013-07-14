@@ -43,16 +43,48 @@ public class DyCameraHandler implements CameraHandler {
 	}
 
 	@Override
-	public Camera createNewCamera(String userId, String cameraId) throws ApplicationException {
+	public Camera createNewCamera(Camera camera) throws ApplicationException {
 		DynamoDBCamera dCamera = new DynamoDBCamera();
-		dCamera.setUserId(userId);
-		dCamera.setCameraId(cameraId);
+		
+		dCamera.setUserId(camera.getUserId());
+		dCamera.setCameraId(camera.getCameraId());
+		dCamera.setCameraName(camera.getCameraName());
+		dCamera.setCameraLocation(camera.getCameraLocation());
 		dCamera.setCameraState(CameraState.CREATED.toString());
 		
+		//Save camera into the database
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
 		mapper.save(dCamera);
 		
-		Camera camera = DyCameraEntityBuilder.build(dCamera);
+		camera = DyCameraEntityBuilder.build(dCamera);
+		return camera;
+	}
+	
+	@Override
+	public Camera updateCamera(Camera camera) throws ApplicationException {
+		DynamoDBMapper mapper = new DynamoDBMapper(client);
+		String userId = camera.getUserId();
+		String cameraId = camera.getCameraId();
+		
+		//Load existing camera details
+		DynamoDBCamera dCamera = mapper.load(DynamoDBCamera.class, userId, cameraId);
+		if(dCamera == null) {
+			LOG.info("Camera " + userId + "-" + cameraId + " was not found in the database");
+			throw ApplicationException.CAMERA_INVALID_CAMERA_ID;
+		}
+		
+		//Update modified fields
+		if(camera.getCameraName() != null) {
+			dCamera.setCameraName(camera.getCameraName());
+		}
+		if(camera.getCameraLocation() != null) {
+			dCamera.setCameraLocation(camera.getCameraLocation());
+		}
+		
+		//Save it back
+		mapper.save(dCamera);
+		
+		camera = DyCameraEntityBuilder.build(dCamera);
 		return camera;
 	}
 
@@ -69,7 +101,7 @@ public class DyCameraHandler implements CameraHandler {
 	
 
 	@Override
-	public List<Camera> listCameras(String userId, String startCameraKey, Integer limit) throws ApplicationException {
+	public List<Camera> listCameras(String userId, String startCameraKey, Boolean reverse, Integer limit) throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
 		
 		//Fix the limit to be sane [0,100]
@@ -82,19 +114,31 @@ public class DyCameraHandler implements CameraHandler {
 	    									.withAttributeValueList(new AttributeValue().withS(userId));
 		keyConditions.put("userId", hashKeyCondition);	
 		
+		//Range key
+		if(startCameraKey != null) {
+			if(!reverse) {
+				LOG.info("Forward camera iterator from " + startCameraKey);
+				Condition rangeKeyCondition = new Condition()
+													.withComparisonOperator(ComparisonOperator.GT.toString())
+													.withAttributeValueList(new AttributeValue().withS(startCameraKey));
+				keyConditions.put("cameraId", rangeKeyCondition);
+			} else {
+				LOG.info("Reverse camera iterator from " + startCameraKey);
+				Condition rangeKeyCondition = new Condition()
+													.withComparisonOperator(ComparisonOperator.LT.toString())
+													.withAttributeValueList(new AttributeValue().withS(startCameraKey));
+				keyConditions.put("cameraId", rangeKeyCondition);
+			}
+		}
+
+		
 		//Issue the query - the mapper sucks for now!
 		QueryRequest query = new QueryRequest()
 									.withTableName("Camera")
 									.withKeyConditions(keyConditions)
 									.withConsistentRead(false)
+									.withScanIndexForward(!reverse)
 									.withLimit(limit);
-		//From where?
-		if(startCameraKey != null) {
-			Map<String, AttributeValue> startKey = new HashMap<String, AttributeValue>();
-			startKey.put("userId", new AttributeValue(userId));
-			startKey.put("cameraId", new AttributeValue(startCameraKey));
-			query = query.withExclusiveStartKey(startKey);
-		}
 		
 		//Process result
 		QueryResult result = client.query(query);
@@ -136,12 +180,7 @@ public class DyCameraHandler implements CameraHandler {
 
 	@Override
 	public void deleteCamera(String userId, String cameraId) throws ApplicationException {
-		// TODO Auto-generated method stub
-		
+		throw new RuntimeException("Not implemented yet");
 	}
-
-
-
-
 
 }

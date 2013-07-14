@@ -12,7 +12,7 @@ public class User {
 	UserState state;
 	UserRole role;
 
-	enum UserRole { NORMAL, ADMIN };
+	public enum UserRole { NORMAL, ADMIN };
 	
 	public User(String userId) {
 		this.userId = userId;

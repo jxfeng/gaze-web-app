@@ -1,7 +1,6 @@
 package gaze.video.handler.dydb;
 
 
-import gaze.application.ApplicationSettings;
 import gaze.video.entity.Session;
 import gaze.video.entity.dynamodb.DynamoDBSession;
 import gaze.video.entity.dynamodb.DynamoDBUser;
@@ -38,7 +37,8 @@ public class DySessionAuthenticator implements SessionAuthenticator {
 	public Session authenticate(String userId, String password) throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
 		
-		//Check password (Hack: keeping in plain text for now)
+		//Check userId and password
+		//HACK: Keeping password in plain-text for now
 		DynamoDBUser dUser = mapper.load(DynamoDBUser.class, userId);
 		if(dUser == null) {
 			LOG.error("User " + userId + " was not found in the database");
@@ -54,12 +54,13 @@ public class DySessionAuthenticator implements SessionAuthenticator {
 		SessionHandler sessionHandler = new DySessionHandler();
 		Session session = sessionHandler.getNewSession(userId);
 		return session;
-		
 	}
 
 	@Override
 	public Session getSession(String sessionId) throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
+		
+		//Find the session in the database
 		DynamoDBSession dSession = mapper.load(DynamoDBSession.class, sessionId);
 		if(dSession == null) {
 			LOG.error("Session " + sessionId + " was not found in the database");
@@ -67,7 +68,7 @@ public class DySessionAuthenticator implements SessionAuthenticator {
 		}
 		Session session = DySessionEntityBuilder.build(dSession);
 		
-		//Update access time
+		//Update access time in the database
 		dSession.setLastRequestTime(System.currentTimeMillis());
 		mapper.save(dSession);
 		
@@ -76,8 +77,8 @@ public class DySessionAuthenticator implements SessionAuthenticator {
 
 	@Override
 	public Boolean isSessionValid(Session session) throws ApplicationException {
-		if((System.currentTimeMillis() - session.getLastRequestTime()) > ApplicationSettings.SESSION_TIMEOUT_MS) {
-			LOG.info("Session id:" + session.getSessionId() + " timed out");
+		if(session.getState() != Session.SessionState.ACTIVE) {
+			LOG.info("Session id:" + session.getSessionId() + " timed/logged out");
 			return false;
 		}
 		return true;
@@ -86,13 +87,18 @@ public class DySessionAuthenticator implements SessionAuthenticator {
 	@Override
 	public Boolean logoutSession(String sessionId) throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
+		
+		//Find the session in the database
 		DynamoDBSession dSession = mapper.load(DynamoDBSession.class, sessionId);
 		if(dSession == null) {
 			LOG.error("Session " + sessionId + " was not found in the database");
 			return false;
 		}
-		//Delete the session
-		mapper.delete(dSession);
+		
+		//Mark the session as logged out
+		dSession.setState(Session.SessionState.LOGGED_OUT.toString());
+		mapper.save(dSession);
+		
 		return true;
 	}
 
