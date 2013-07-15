@@ -1,10 +1,12 @@
 package gaze.video.handler.dydb;
 
+import gaze.video.entity.CameraShard;
 import gaze.video.entity.Image;
 import gaze.video.entity.ImageVariation;
 import gaze.video.entity.Image.ImageState;
-import gaze.video.entity.ImageVariation.BlobResolution;
+import gaze.video.entity.ImageVariation.BlobVariation;
 import gaze.video.entity.ImageVariation.BlobSource;
+import gaze.video.entity.dynamodb.DynamoDBCamera;
 import gaze.video.entity.dynamodb.DynamoDBCameraShard;
 import gaze.video.entity.dynamodb.DynamoDBImage;
 import gaze.video.entity.dynamodb.DynamoDBImageVariation;
@@ -50,44 +52,55 @@ public class DyImageHandler implements ImageHandler {
 	}
 
 	@Override
-	public String createShard(String userId, String cameraId, Long imageTimestamp) {
+	public CameraShard getShard(String userId, String cameraId, Long imageTimestamp)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		Long shardDate = generateShardDate(imageTimestamp);
+		Long shardId = getShardId(imageTimestamp);
 		String cameraKey = generateCameraKey(userId, cameraId);
-		DynamoDBCameraShard dShard = mapper.load(DynamoDBCameraShard.class, cameraKey, shardDate);
+		DynamoDBCameraShard dShard = mapper.load(DynamoDBCameraShard.class, cameraKey, shardId);
 		
+		//Return existing
 		if(dShard != null) {
-			LOG.info("Shard for camera" + cameraKey + " date: " + shardDate + " found");
-			return dShard.getShardId();
-		} else {
-			LOG.info("Created shard for camera" + cameraKey + " date: " + shardDate);
+			LOG.debug("Shard for userId: " + userId + " cameraId: " + cameraId + " shardId: " + shardId + " already exists");
+			return DyCameraShardEntityBuilder.build(dShard);
+		} 
+		
+		//Create new and return that
+		else {
+			LOG.debug("Created shard for userId: " + userId + " cameraId: " + cameraId + " shardId: " + shardId + " already exists");
 			dShard = new DynamoDBCameraShard();
+			dShard.setUserId(userId);
+			dShard.setCameraId(cameraId);
 			dShard.setCameraKey(cameraKey);
-			dShard.setShardDate(shardDate);
+			dShard.setShardId(shardId);
 			dShard.setShardComplete(false);
-			dShard.setShardId(generateShardId(userId, cameraId, imageTimestamp));
+			dShard.setShardKey(getShardKey(userId, cameraId, imageTimestamp));
 			mapper.save(dShard);
-			return dShard.getShardId();
+			return DyCameraShardEntityBuilder.build(dShard);
 		}
-	}
-
-	@Override
-	public String getShardId(String userId, String cameraId, Long imageTimestamp) {
-		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		Long shardDate = generateShardDate(imageTimestamp);
-		String cameraKey = generateCameraKey(userId, cameraId);
-		DynamoDBCameraShard dShard = mapper.load(DynamoDBCameraShard.class, cameraKey, shardDate);
-		if(dShard == null) {
-			LOG.info("Shard for camera" + cameraId + " date: " + shardDate + " not found");
-			return null;
-		}
-		return dShard.getShardId();
 	}
 	
 	@Override
-	public Long getNextShardId(String userId, String cameraId, Long imageTimestamp) {
+	public CameraShard getPreviousShard(String userId, String cameraId, Long imageTimestamp)  throws ApplicationException {
+		List<CameraShard> shardList = listShards(userId, cameraId, imageTimestamp, true, 1);
+		if(shardList != null && shardList.size() > 0) {
+			return shardList.get(0);
+		}
+		return null;
+	}
+	
+	@Override
+	public CameraShard getNextShard(String userId, String cameraId, Long imageTimestamp)  throws ApplicationException {
+		List<CameraShard> shardList = listShards(userId, cameraId, imageTimestamp, false, 1);
+		if(shardList != null && shardList.size() > 0) {
+			return shardList.get(0);
+		}
+		return null;
+	}
+	
+	@Override
+	public List<CameraShard> listShards(String userId, String cameraId, Long fromTimestamp, Boolean reverse, Integer limit)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		Long shardDate = generateShardDate(imageTimestamp);
+		Long shardId = getShardId(fromTimestamp);
 		String cameraKey = generateCameraKey(userId, cameraId);
 		
 		//Match hash key
@@ -95,48 +108,63 @@ public class DyImageHandler implements ImageHandler {
 		Condition hashKeyCondition = new Condition()
 	    									.withComparisonOperator(ComparisonOperator.EQ.toString())
 	    									.withAttributeValueList(new AttributeValue().withS(cameraKey));
-		keyConditions.put("cameraKey", hashKeyCondition);	
+		keyConditions.put("cameraKey", hashKeyCondition);
+		
+		//Iterator over range key
+		if(fromTimestamp != null) {
+			if(!reverse) {
+				LOG.info("Forward iterator on camera shard userId: " + userId + " cameraId: " + cameraId + " from: " + shardId);
+				Condition rangeKeyCondition = new Condition()
+					.withComparisonOperator(ComparisonOperator.GT.toString())
+					.withAttributeValueList(new AttributeValue().withN(shardId.toString()));
+				keyConditions.put("shardId", rangeKeyCondition);
+			} else {
+				LOG.info("Reverse iterator on camera shard userId: " + userId + " cameraId: " + cameraId + " from: " + shardId);
+				Condition rangeKeyCondition = new Condition()
+				.withComparisonOperator(ComparisonOperator.LT.toString())
+				.withAttributeValueList(new AttributeValue().withN(shardId.toString()));
+				keyConditions.put("shardId", rangeKeyCondition);
+			}
+		}
 		
 		//Issue the query - the mapper sucks for now!
 		QueryRequest query = new QueryRequest()
 									.withTableName("CameraShard")
 									.withKeyConditions(keyConditions)
 									.withConsistentRead(false)
-									.withLimit(10);
-		//From where?
-		if(imageTimestamp != null) { 
-			Map<String, AttributeValue> startKey = new HashMap<String, AttributeValue>();
-			startKey.put("cameraKey", new AttributeValue(cameraKey));
-			startKey.put("shardDate", new AttributeValue(shardDate.toString()));
-			query = query.withExclusiveStartKey(startKey);
-		}
+									.withScanIndexForward(!reverse)
+									.withLimit(limit);
 		
 		//Process result
-		//TODO: Check that string sorting behaves correctly, the dates should be in order
 		QueryResult result = client.query(query);
 		if(result != null) {
-			List<DynamoDBCameraShard> dShards = mapper.marshallIntoObjects(DynamoDBCameraShard.class, result.getItems());
-			List<Long> dates = new ArrayList<Long>();
-			for(DynamoDBCameraShard shard : dShards) {
-				dates.add(shard.getShardDate());
-			}
-			Collections.sort(dates);
-			return dates.get(0);
+			List<DynamoDBCameraShard> shardList = mapper.marshallIntoObjects(DynamoDBCameraShard.class, result.getItems());
+			return DyCameraShardEntityBuilder.buildShardList(shardList);
+		} else {
+			LOG.info("Failed iterator on camera shard userId: " + userId + " cameraId: " + cameraId + " from: " + shardId);
+			throw ApplicationException.SHARD_QUERY_FAILED;
 		}
-		return null;
+		
 	}
 
 	@Override
-	public Image createImage(String shardId, Long timestamp) {
+	public Image createImage(CameraShard shard, Long timestamp)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = generateImageKey(shardId, timestamp);
-		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardId, imageKey);
+		String shardKey = getShardKey(shard);
+		String imageKey = getImageKey(shardKey, timestamp);
+		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardKey, imageKey);
+		
+		//Image entry already exists
 		if(dImage != null) {
-			LOG.info("Found image shard:" + shardId + " imageKey:" + imageKey);
+			LOG.info("Found image in shard with shardKey:" + shardKey + " imageKey:" + imageKey);
 			return DyImageEntityBuilder.build(dImage);
-		} else {
+		} 
+		
+		//Create new image entry
+		else {
+			LOG.info("Created new image in shard with shardKey:" + shardKey + " imageKey:" + imageKey);
 			dImage = new DynamoDBImage();
-			dImage.setCameraShardId(shardId);
+			dImage.setShardKey(shardKey);
 			dImage.setImageKey(imageKey);
 			dImage.setImageState(Image.ImageState.CREATED.toString());
 			dImage.setImageTimestamp(timestamp);
@@ -146,85 +174,100 @@ public class DyImageHandler implements ImageHandler {
 	}
 
 	@Override
-	public boolean doesImageExist(String shardId, Long timestamp) {
-		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = generateImageKey(shardId, timestamp);
-		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardId, imageKey);
-		if(dImage != null) {
-			LOG.info("Found image shard:" + shardId + " imageKey:" + imageKey);
-			return true;
-		}
-		return false;
+	public boolean doesImageExist(CameraShard shard, Long timestamp)  throws ApplicationException{
+		return (getImage(shard, timestamp) != null);
 	}
 
 	@Override
-	public Image getImage(String shardId, Long timestamp) {
+	public Image getImage(CameraShard shard, Long timestamp)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = generateImageKey(shardId, timestamp);
-		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardId, imageKey);
+		String shardKey = getShardKey(shard);
+		String imageKey = getImageKey(shardKey, timestamp);
+		
+		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardKey, imageKey);
 		if(dImage != null) {
-			LOG.info("Found image shard:" + shardId + " imageKey:" + imageKey);
+			LOG.debug("Found image ts " + timestamp + " in shard shardKey:" + shardKey + " imageKey:" + imageKey);
 			return DyImageEntityBuilder.build(dImage);
 		}
+		
+		LOG.debug("Did not find image ts " + timestamp + " in shard shardKey:" + shardKey + " imageKey:" + imageKey);
 		return null;
 	}
 
 	@Override
-	public Image updateImageState(String shardId, Long timestamp, ImageState newState) {
+	public Image updateImageState(CameraShard shard, Long timestamp, ImageState newState)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = generateImageKey(shardId, timestamp);
-		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardId, imageKey);
+		String shardKey = getShardKey(shard);
+		String imageKey = getImageKey(shardKey, timestamp);
+		
+		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardKey, imageKey);
 		if(dImage != null) {
-			LOG.info("Found image shard:" + shardId + " imageKey:" + imageKey);
+			LOG.debug("Updated image ts " + timestamp + " in shard shardKey:" + shardKey + " imageKey:" + imageKey + " to state:" + newState);
 			dImage.setImageState(newState.toString());
 			mapper.save(dImage);
 			return DyImageEntityBuilder.build(dImage);
 		}
+		
+		LOG.debug("Could not update image ts " + timestamp + " in shard shardKey:" + shardKey + " imageKey:" + imageKey + " to state:" + newState);
 		return null;
 	}
 
 	@Override
-	public List<Image> listImages(String shardId, Long startImageTimestamp, Integer limit) throws ApplicationException {
+	public List<Image> listImages(CameraShard shard, Long since, Boolean reverse, Integer limit) throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		limit = Math.max(1, Math.min(limit, 100));
-		
+		String shardKey = getShardKey(shard);
+
+		//Fix input arguments
+		limit = (limit != null) ? Math.max(1, Math.min(limit, 100)) : 10;
+		reverse = (reverse == null) ? false : reverse;
+
 		//Match hash key
 		Map<String, Condition> keyConditions = new HashMap<String, Condition>();
 		Condition hashKeyCondition = new Condition()
-	    									.withComparisonOperator(ComparisonOperator.EQ.toString())
-	    									.withAttributeValueList(new AttributeValue().withS(shardId));
-		keyConditions.put("cameraShardId", hashKeyCondition);	
-		
+		.withComparisonOperator(ComparisonOperator.EQ.toString())
+		.withAttributeValueList(new AttributeValue().withS(shardKey));
+		keyConditions.put("shardKey", hashKeyCondition);	
+
+		//Am I given a start key?
+		if(since != null) {
+			if(!reverse) {
+				Condition rangeKeyCondition = new Condition()
+				.withComparisonOperator(ComparisonOperator.GT.toString())
+				.withAttributeValueList(new AttributeValue().withS(getImageKey(shardKey, since)));
+				keyConditions.put("imageKey", rangeKeyCondition);
+			} else {
+				Condition rangeKeyCondition = new Condition()
+				.withComparisonOperator(ComparisonOperator.LT.toString())
+				.withAttributeValueList(new AttributeValue().withS(getImageKey(shardKey, since)));
+				keyConditions.put("imageKey", rangeKeyCondition);
+			}
+		}
+
 		//Issue the query - the mapper sucks for now!
 		QueryRequest query = new QueryRequest()
-									.withTableName("Image")
-									.withKeyConditions(keyConditions)
-									.withConsistentRead(false)
-									.withLimit(limit);
-		//From where?
-		if(startImageTimestamp != null) {
-			Map<String, AttributeValue> startKey = new HashMap<String, AttributeValue>();
-			startKey.put("cameraShardId", new AttributeValue(shardId));
-			startKey.put("imageKey", new AttributeValue(generateImageKey(shardId, startImageTimestamp)));
-			query = query.withExclusiveStartKey(startKey);
-		}
-		
+		.withTableName("Image")
+		.withKeyConditions(keyConditions)
+		.withScanIndexForward(!reverse)
+		.withConsistentRead(false)
+		.withLimit(limit);
+
 		//Process result
 		QueryResult result = client.query(query);
 		if(result != null) {
 			List<DynamoDBImage> imageList = mapper.marshallIntoObjects(DynamoDBImage.class, result.getItems());
-			LOG.info("Found " + imageList.size() + " images in shard " + shardId);
+			LOG.info("Found " + imageList.size() + " images in shard " + shardKey);
 			return DyImageEntityBuilder.buildImageList(imageList);
 		} else {
-			LOG.error("Image query failed for shardId: " + shardId + " startImageTimestamp: " + startImageTimestamp + " limit: " + limit);
+			LOG.error("Image query failed for shardKey: " + shardKey + " since: " + since + " limit: " + limit);
 			throw ApplicationException.IMAGE_QUERY_FAILED;
 		}
 	}
 
 	@Override
-	public ImageVariation createImageBlob(String userId, String cameraId, Long imageTimestamp, String blobContentType, Integer blobLengthBytes, BlobSource blobSource, BlobResolution blobResolution) {
+	public ImageVariation createImageBlob(String userId, String cameraId, Long imageTimestamp, String blobContentType, 
+			Integer blobLengthBytes, BlobSource blobSource, BlobVariation blobResolution)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = generateImageKey(generateShardId(userId, cameraId, imageTimestamp), imageTimestamp);
+		String imageKey = getImageKey(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
 		String blobResolutionString = blobResolution.toString();
 		DynamoDBImageVariation dImageBlob = mapper.load(DynamoDBImageVariation.class, imageKey, blobResolutionString);
 		if(dImageBlob != null) {
@@ -233,9 +276,9 @@ public class DyImageHandler implements ImageHandler {
 		} else {
 			dImageBlob = new DynamoDBImageVariation();
 			dImageBlob.setImageKey(imageKey);
-			dImageBlob.setImageResolution(blobResolutionString);
+			dImageBlob.setImageVariation(blobResolutionString);
 			dImageBlob.setBlobSource(blobSource.toString());
-			dImageBlob.setBlobId(generateBlobId(generateShardId(userId, cameraId, imageTimestamp), imageTimestamp, blobResolution));
+			dImageBlob.setBlobId(generateBlobId(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp, blobResolution));
 			dImageBlob.setBlobContentType(blobContentType);
 			dImageBlob.setBlobLengthBytes(blobLengthBytes);
 			mapper.save(dImageBlob);
@@ -244,10 +287,11 @@ public class DyImageHandler implements ImageHandler {
 	}
 	
 	@Override
-	public ImageVariation getImageVariation(String userId, String cameraId, Long imageTimestamp, ImageVariation.BlobResolution blobResolution) {
+	public ImageVariation getImageVariation(String userId, String cameraId, Long imageTimestamp, 
+			ImageVariation.BlobVariation blobResolution)  throws ApplicationException {
 		
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = generateImageKey(generateShardId(userId, cameraId, imageTimestamp), imageTimestamp);
+		String imageKey = getImageKey(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
 		String blobResolutionString = blobResolution.toString();
 		DynamoDBImageVariation dImageBlob = mapper.load(DynamoDBImageVariation.class, imageKey, blobResolutionString);
 		if(dImageBlob != null) {
@@ -260,16 +304,17 @@ public class DyImageHandler implements ImageHandler {
 	}
 
 	@Override
-	public List<ImageVariation> listImageVariations(String userId, String cameraId, Long imageTimestamp) {
+	public List<ImageVariation> listImageVariations(String userId, String cameraId, Long imageTimestamp)  throws ApplicationException {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 
 	@Override
-	public ImageVariation updateImageBlobState(String userId, String cameraId, Long imageTimestamp, BlobResolution blobResolution, ImageVariation.BlobState blobState) {
+	public ImageVariation updateImageBlobState(String userId, String cameraId, Long imageTimestamp, 
+			BlobVariation blobResolution, ImageVariation.BlobState blobState)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = generateImageKey(generateShardId(userId, cameraId, imageTimestamp), imageTimestamp);
+		String imageKey = getImageKey(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
 		String blobResolutionString = blobResolution.toString();
 		DynamoDBImageVariation dImageBlob = mapper.load(DynamoDBImageVariation.class, imageKey, blobResolutionString);
 		if(dImageBlob != null) {
@@ -281,7 +326,19 @@ public class DyImageHandler implements ImageHandler {
 		return null;
 	}
 	
-	private Long generateShardDate(Long timestamp) {
+	@Override
+	public Long getStartTimestamp(Long shardId) {
+		Long startTimestamp = shardId * 1000000000;
+		return startTimestamp;
+	}
+	
+	@Override
+	public Long getEndTimestamp(Long shardId) {
+		Long endTimestamp = ((shardId + 1) * 1000000000) - 1;
+		return endTimestamp;
+	}
+	
+	private Long getShardId(Long timestamp) {
 		return timestamp/1000000000;
 	}
 	
@@ -289,16 +346,20 @@ public class DyImageHandler implements ImageHandler {
 		return "user-" + userId + "-camera-" + cameraId;
 	}
 	
-	private String generateShardId(String userId, String cameraId, Long timestamp) {
-		return "user-" + userId + "-camera-" + cameraId + "-shard-" + generateShardDate(timestamp);
+	private String getShardKey(CameraShard shard) {
+		return getShardKey(shard.getUserId(), shard.getCameraId(), shard.getShardBeginTimestamp());
 	}
 	
-	private String generateImageKey(String shardKey, Long timestamp) {
-		return shardKey + "-imagets-" + timestamp;
+	private String getShardKey(String userId, String cameraId, Long timestamp) {
+		return "user-" + userId + "-camera-" + cameraId + "-shard-" + String.format("%010d", getShardId(timestamp));
+	}
+	
+	private String getImageKey(String shardKey, Long timestamp) {
+		return shardKey + "-imagets-" + String.format("%020d", timestamp);
 	}
 
-	private String generateBlobId(String shardKey, Long timestamp, BlobResolution blobResolution) {
-		return shardKey + "-imagets-" + timestamp + "-resolution-" + blobResolution.toString();
+	private String generateBlobId(String shardKey, Long timestamp, BlobVariation blobResolution) {
+		return shardKey + "-imagets-" + String.format("%020d", timestamp) + "-resolution-" + blobResolution.toString();
 	}
 
 

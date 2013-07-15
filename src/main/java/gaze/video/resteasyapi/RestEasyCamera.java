@@ -3,12 +3,15 @@ package gaze.video.resteasyapi;
 import gaze.application.ApplicationSettings;
 import gaze.video.entity.AppError;
 import gaze.video.entity.Camera;
+import gaze.video.entity.CameraShard;
 import gaze.video.entity.Session;
 import gaze.video.entity.User;
 import gaze.video.exception.ApplicationException;
 import gaze.video.handler.CameraHandler;
+import gaze.video.handler.ImageHandler;
 import gaze.video.handler.SessionAuthenticator;
 import gaze.video.handler.dydb.DyCameraHandler;
+import gaze.video.handler.dydb.DyImageHandler;
 import gaze.video.handler.dydb.DySessionAuthenticator;
 
 import java.util.List;
@@ -127,6 +130,54 @@ public class RestEasyCamera {
 				if(cameraId != null) {
 					Camera camera = cameraHandler.getCameraDetails(sessionUserId, cameraId);
 					return Response.status(Status.OK).entity(gson.toJson(camera)).build();
+				} else {
+					throw ApplicationException.CAMERA_INVALID_CAMERA_ID;
+				}
+			} else {
+				throw ApplicationException.USER_INVALID_USER_ID;
+			}
+			
+		} catch(ApplicationException exception) {
+			LOG.error(exception.getErrorCode().toString(), exception.getCause());
+			AppError error = new AppError(exception.getErrorCode(), exception.getMessage());
+			return Response.status(Status.INTERNAL_SERVER_ERROR).entity(new Gson().toJson(error)).build();
+		}
+	}
+	
+	@GET
+	@Path("/{cameraId}/list-shards")
+	@Produces("application/json")
+	public Response listCameraShards(@HeaderParam(ApplicationSettings.SESSION_HTTP_HEADER) String sessionId,
+			@PathParam("cameraId") String cameraId, @QueryParam("from") Long fromTS, @QueryParam("reverse") Boolean reverse, @QueryParam("limit") Integer limit) {
+		try {
+			Gson gson = new Gson();
+			SessionAuthenticator authenticator = new DySessionAuthenticator();
+			CameraHandler cameraHandler = new DyCameraHandler();
+			ImageHandler imageHandler = new DyImageHandler();
+			
+			//Check if sessionId was passed in
+			if(sessionId == null) {
+				LOG.error("No session id provided in the request");
+				throw ApplicationException.SESSION_INVALID_ID;
+			}
+			
+			//Make sure session is valid
+			Session session = authenticator.getSession(sessionId);
+			if(!authenticator.isSessionValid(session)) {
+				throw ApplicationException.SESSION_EXPIRED;
+			}
+			String sessionUserId = session.getUserId();
+			
+			//Check arguments
+			fromTS = (fromTS != null && fromTS > 0) ? fromTS : 0;
+			reverse = (reverse != null) ? reverse : false;
+			limit = (limit != null) ? Math.min(limit, 100) : 100;
+			
+			//Get info on the camera
+			if(sessionUserId != null) {
+				if(cameraId != null) {
+					List<CameraShard> shardList = imageHandler.listShards(sessionUserId, cameraId, fromTS, reverse, limit);
+					return Response.status(Status.OK).entity(gson.toJson(shardList)).build();
 				} else {
 					throw ApplicationException.CAMERA_INVALID_CAMERA_ID;
 				}

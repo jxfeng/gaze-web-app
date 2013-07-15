@@ -9,7 +9,7 @@ import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBTable;
 public class DynamoDBImageVariation {
 
 	private String imageKey;
-	private String imageResolution;
+	private String imageVariation;
 	private String blobSource;
 	private String blobId;
 	private String blobContentType;
@@ -24,12 +24,12 @@ public class DynamoDBImageVariation {
 		this.imageKey = imageKey;
 	}
 	
-	@DynamoDBRangeKey(attributeName="imageResolution")
-	public String getImageResolution() {
-		return imageResolution;
+	@DynamoDBRangeKey(attributeName="imageVariation")
+	public String getImageVariation() {
+		return imageVariation;
 	}
-	public void setImageResolution(String imageResolution) {
-		this.imageResolution = imageResolution;
+	public void setImageVariation(String imageVariation) {
+		this.imageVariation = imageVariation;
 	}
 	
 	@DynamoDBAttribute(attributeName="blobSource")

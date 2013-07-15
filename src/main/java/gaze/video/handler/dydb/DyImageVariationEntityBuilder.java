@@ -16,7 +16,7 @@ public class DyImageVariationEntityBuilder {
 
 	public static ImageVariation build(DynamoDBImageVariation dyImageBlob) {
 		ImageVariation blob = new ImageVariation();
-		blob.setBlobResolution(ImageVariation.BlobResolution.valueOf(dyImageBlob.getImageResolution()));
+		blob.setBlobVariation(ImageVariation.BlobVariation.valueOf(dyImageBlob.getImageVariation()));
 		blob.setBlobSource(ImageVariation.BlobSource.valueOf(dyImageBlob.getBlobSource()));
 		blob.setBlobId(dyImageBlob.getBlobId());
 		blob.setBlobContentType(dyImageBlob.getBlobContentType());

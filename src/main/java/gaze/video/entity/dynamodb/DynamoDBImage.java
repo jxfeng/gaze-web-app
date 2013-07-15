@@ -8,17 +8,17 @@ import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBTable;
 @DynamoDBTable(tableName="Image")
 public class DynamoDBImage {
 
-	private String cameraShardId;
+	private String shardKey;
 	private String imageKey;
 	private Long   imageTimestamp;
 	private String imageState;
 	
-	@DynamoDBHashKey(attributeName="cameraShardId")
-	public String getCameraShardId() {
-		return cameraShardId;
+	@DynamoDBHashKey(attributeName="shardKey")
+	public String getShardKey() {
+		return shardKey;
 	}
-	public void setCameraShardId(String cameraShardId) {
-		this.cameraShardId = cameraShardId;
+	public void setShardKey(String shardKey) {
+		this.shardKey = shardKey;
 	}
 	
 	@DynamoDBRangeKey(attributeName="imageKey")

@@ -29,12 +29,16 @@ public class ApplicationException extends Exception {
 	public static final ApplicationException IMAGE_ALREADY_EXISTS;
 	public static final ApplicationException IMAGE_INVALID_IMAGE_ID;
 	public static final ApplicationException IMAGE_QUERY_FAILED;
+	public static final ApplicationException IMAGE_INVALID_BLOB;
+	public static final ApplicationException IMAGE_NOT_IN_VALID_STATE;
 	
 	public static final ApplicationException NO_SUCH_BLOB;
 	public static final ApplicationException BLOB_INVALID_SOURCE;
 	public static final ApplicationException BLOB_INVALID_BLOB_ID;
 	public static final ApplicationException BLOB_COULD_NOT_CONVERT;
 	public static final ApplicationException BLOB_FETCH_FAILED;
+	
+	public static final ApplicationException SHARD_QUERY_FAILED;
 	
 	static {
 		//SESSION - 5000
@@ -63,12 +67,16 @@ public class ApplicationException extends Exception {
 		IMAGE_ALREADY_EXISTS = new ApplicationException(8003, "Image id already exists");
 		IMAGE_INVALID_IMAGE_ID = new ApplicationException(8004, "Invalid image id");
 		IMAGE_QUERY_FAILED = new ApplicationException(8005, "Image query failed");
+		IMAGE_INVALID_BLOB = new ApplicationException(8006, "Image blob was invalid");
+		IMAGE_NOT_IN_VALID_STATE = new ApplicationException(8007, "Image not in a valid state");
 		//BLOB - 9000
 		NO_SUCH_BLOB = new ApplicationException(9001, "No such blob");
 		BLOB_INVALID_SOURCE = new ApplicationException(9002, "Invalid source of blob");
 		BLOB_INVALID_BLOB_ID = new ApplicationException(9003, "Invalid blob id");
 		BLOB_COULD_NOT_CONVERT = new ApplicationException(9004, "Could not convert blob contents from S3");
 		BLOB_FETCH_FAILED = new ApplicationException(9005, "Could not fetch blob from S3");
+		//SHARD - 10000
+		SHARD_QUERY_FAILED = new ApplicationException(10001, "Shard query failed");
 	}
 	
 	private final Integer errorCode;

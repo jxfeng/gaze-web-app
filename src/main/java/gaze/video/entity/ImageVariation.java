@@ -2,22 +2,22 @@ package gaze.video.entity;
 
 public class ImageVariation {
 
-	private BlobResolution blobResolution;
+	private BlobVariation blobVariation;
 	private BlobSource blobSource;
 	private String blobId;
 	private String blobContentType;
 	private BlobState blobState;
 	private Integer blobLengthBytes;
 	
-	public enum BlobResolution {ORIGINAL, IPHONE4, IPAD};
+	public enum BlobVariation {ORIGINAL, RT_FEATURE_DETECTED};
 	public enum BlobSource {AMAZON_S3, AMAZON_S3_RRS};
 	public enum BlobState {CREATED, LOADED};
 	
-	public BlobResolution getBlobResolution() {
-		return blobResolution;
+	public BlobVariation getBlobVariation() {
+		return blobVariation;
 	}
-	public void setBlobResolution(BlobResolution blobResolution) {
-		this.blobResolution = blobResolution;
+	public void setBlobVariation(BlobVariation blobVariation) {
+		this.blobVariation = blobVariation;
 	}
 	
 	public BlobSource getBlobSource() {

@@ -3,11 +3,12 @@ package gaze.video.resteasyapi;
 import gaze.application.ApplicationSettings;
 import gaze.video.entity.AppError;
 import gaze.video.entity.Camera;
+import gaze.video.entity.CameraShard;
 import gaze.video.entity.Image;
 import gaze.video.entity.ImageBlob;
 import gaze.video.entity.ImageVariation;
 import gaze.video.entity.Session;
-import gaze.video.entity.ImageVariation.BlobResolution;
+import gaze.video.entity.ImageVariation.BlobVariation;
 import gaze.video.exception.ApplicationException;
 import gaze.video.handler.CameraHandler;
 import gaze.video.handler.ImageBlobHandler;
@@ -19,6 +20,7 @@ import gaze.video.handler.dydb.DySessionAuthenticator;
 import gaze.video.handler.s3.S3ImageBlobHandler;
 
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -52,7 +54,7 @@ public class RestEasyImage {
 	@Produces("application/json")
 	@Consumes("multipart/form-data")
 	public Response createNewImage(@HeaderParam(ApplicationSettings.SESSION_HTTP_HEADER) String sessionId,
-			@PathParam("cameraId") String cameraId,  @PathParam("imageTS") Long imageTS, MultipartFormDataInput input) {
+			@PathParam("cameraId") String cameraId,  @PathParam("imageTS") Long imageTS, @QueryParam("variation") String variation, MultipartFormDataInput input) {
 		try {
 			
 			SessionAuthenticator authenticator = new DySessionAuthenticator();
@@ -60,16 +62,25 @@ public class RestEasyImage {
 			ImageBlobHandler blobHandler = new S3ImageBlobHandler();
 			CameraHandler cameraHandler = new DyCameraHandler();
 			
-			//Make sure session is valid
+			//Check if sessionId was passed in
 			if(sessionId == null) {
 				LOG.error("No session id provided in the request");
 				throw ApplicationException.SESSION_INVALID_ID;
 			}
+			
+			//Make sure session is valid
 			Session session = authenticator.getSession(sessionId);
+			if(!authenticator.isSessionValid(session)) {
+				LOG.error("Session id:" + session.getSessionId() + " expired");
+				throw ApplicationException.SESSION_EXPIRED;
+			}
+			
+			//Extract user from session
 			String userId = session.getUserId();
 			
 			//TODO: Make sure user is active
 			//TODO: Throw out really big requests
+			//TODO: If shard has been archived then new posts aren't allowed
 			
 			if(cameraId == null) {
 				LOG.error("No camera id provided when uploading new image");
@@ -90,8 +101,6 @@ public class RestEasyImage {
 			List<InputPart> parts = form.get("uploaded-image");
 			for(InputPart part : parts) {
 				try {
-					
-					//Parse headers - extract content type
 					MultivaluedMap<String, String> header = part.getHeaders();
 					for(String key : header.keySet()) {
 						LOG.info("Header has key: " + key + " and values: " + header.get(key));
@@ -108,44 +117,65 @@ public class RestEasyImage {
 					//Get file contents
 					InputStream stream = part.getBody(InputStream.class, null);
 					blobContents = IOUtils.toByteArray(stream);
-					
-					LOG.info("Got input part " + part);
 					break;
-					
 				} catch(Exception e) {
 					LOG.error("Got an error while receiving the uploaded image");
 					LOG.error(e.getLocalizedMessage());
-					e.printStackTrace();
+					throw ApplicationException.IMAGE_INVALID_BLOB;
 				}
 			}
 			
 			assert(blobContentType != null && blobContentType.length() > 0);
 			assert(blobContents != null && blobContents.length > 0);
 			
-			
-			//Create a shard if it doesn't exist
-			String shardId = imageHandler.getShardId(userId, cameraId, imageTS);
-			if(shardId == null) {
-				LOG.info("Creating shard for camera: " + cameraId + " for timestamp:" + imageTS);
-				shardId = imageHandler.createShard(userId, cameraId, imageTS);
+			//Create/get a shard to put the image
+			CameraShard shard = imageHandler.getShard(userId, cameraId, imageTS);
+			if(shard == null) {
+				LOG.error("Could not create/get shard for userId: " + userId + " cameraId: " + cameraId + " imagets:" + imageTS);
+				throw ApplicationException.CAMERA_INVALID_INPUT;
 			}
+			assert(shard != null);
 			
-			//Get current image state
-			Image image = imageHandler.createImage(shardId, imageTS);
-			
-			//LOADED: All done
-			if(image.getImageState() == Image.ImageState.LOADED) {
-				LOG.info("Image camera: " + cameraId + " image: " + imageTS + " is fully loaded");
-				return Response.status(Status.OK).entity(new Gson().toJson(image)).build();
+			//Process the variation
+			BlobVariation blobVariation = BlobVariation.ORIGINAL;
+			variation = (variation != null) ? variation : BlobVariation.ORIGINAL.toString();
+			for(BlobVariation bv : BlobVariation.values()) {
+				if(variation.equals(bv.toString())) {
+					blobVariation = bv;
+				}
 			}
+			LOG.info("Loading image variation userId: " + userId + " cameraId: " + cameraId + " imagets:" + imageTS + " variation: " + blobVariation);
 			
+			//Get image state
+			//If ORIGINAL, then create image entry
+			Image image;
+			if(blobVariation == BlobVariation.ORIGINAL) {
+				image = imageHandler.createImage(shard, imageTS);
+				if(image.getImageState() == Image.ImageState.LOADED) {
+					LOG.info("Image camera: " + cameraId + " image: " + imageTS + " is fully loaded");
+					return Response.status(Status.OK).entity(new Gson().toJson(image)).build();
+				}
+			} 
+			//Image must already exist and be LOADED
+			else {
+				image = imageHandler.getImage(shard, imageTS);
+				if(image.getImageState() != Image.ImageState.LOADED) {
+					LOG.info("Cannot load variation for userId: " + userId + " cameraId: " + cameraId + " imagets:" + imageTS + " until image is LOADED");
+					throw ApplicationException.IMAGE_NOT_IN_VALID_STATE;
+				}
+			}
+
 			//CREATED: create blobId, load into S3, update state
-			if(image.getImageState() == Image.ImageState.CREATED) {
+			if((blobVariation == BlobVariation.ORIGINAL && image.getImageState() == Image.ImageState.CREATED) || 
+					(blobVariation != BlobVariation.ORIGINAL && image.getImageState() == Image.ImageState.LOADED)) {
+				
+				//See if metadata for blob already exists
 				List<ImageVariation> blobs = imageHandler.listImageVariations(userId, cameraId, imageTS);
 				ImageVariation originalBlob = null;
 				if(blobs != null && blobs.size() > 0) {
 					for(ImageVariation b : blobs) {
-						if(b.getBlobResolution() == ImageVariation.BlobResolution.ORIGINAL) {
+						if(b.getBlobVariation() == blobVariation) {
+							LOG.info("Found existing variation userId: " + userId + " cameraId: " + cameraId + " imagets:" + imageTS + " variation: " + blobVariation);
 							originalBlob = b;
 							break;
 						}
@@ -159,14 +189,15 @@ public class RestEasyImage {
 							blobContentType,
 							blobContents.length,
 							ImageVariation.BlobSource.AMAZON_S3, 
-							ImageVariation.BlobResolution.ORIGINAL
+							blobVariation
 							);
-					LOG.info("Got image blob id:" + originalBlob.getBlobId());
+					LOG.info("Created variation userId: " + userId + " cameraId: " + cameraId + " imagets:" + imageTS + " variation: " + blobVariation);
 				}
 				
 				//Load into S3 (no other choice for now)
 				if(originalBlob.getBlobSource() == ImageVariation.BlobSource.AMAZON_S3) {
 					blobHandler.createImageBlob(originalBlob.getBlobId(), blobContentType, blobContents);
+					LOG.info("Created blob variation userId: " + userId + " cameraId: " + cameraId + " imagets:" + imageTS + " variation: " + blobVariation);
 				} else {
 					LOG.error("Invalid blob source given; should always be S3");
 					throw ApplicationException.BLOB_INVALID_SOURCE;
@@ -174,13 +205,17 @@ public class RestEasyImage {
 				
 				//Record updated state
 				ImageVariation updatedBlob = imageHandler.updateImageBlobState(userId, cameraId, imageTS, 
-						ImageVariation.BlobResolution.ORIGINAL, ImageVariation.BlobState.LOADED);
+						blobVariation, ImageVariation.BlobState.LOADED);
 				
-				//Update image state to LOADED
-				Image updatedImage = imageHandler.updateImageState(shardId, imageTS, Image.ImageState.LOADED);
-				LOG.info("Image camera: " + cameraId + " imageTimestamp: " + imageTS + " is now loaded");
+				//If ORIGINAL, update image state to LOADED
+				if(blobVariation == BlobVariation.ORIGINAL) {
+					Image updatedImage = imageHandler.updateImageState(shard, imageTS, Image.ImageState.LOADED);
+					LOG.info("Image userId: " + userId + " cameraId: " + cameraId + " imagets: " + imageTS + " is now fully loaded");
+					return Response.status(Status.OK).entity(new Gson().toJson(updatedImage)).build();
+				}
 				
-				return Response.status(Status.OK).entity(new Gson().toJson(updatedImage)).build();
+				return Response.status(Status.OK).entity(new Gson().toJson(image)).build();
+
 			} 
 
 			return Response.status(Status.INTERNAL_SERVER_ERROR).build();
@@ -196,47 +231,83 @@ public class RestEasyImage {
 	@Path("/{cameraId}/list")
 	@Produces("application/json")
 	public Response listImages(@HeaderParam(ApplicationSettings.SESSION_HTTP_HEADER) String sessionId,
-		@PathParam("cameraId") String cameraId, @QueryParam("since") Long since, @QueryParam("limit") Integer limit) {
+		@PathParam("cameraId") String cameraId, @QueryParam("since") Long since, @QueryParam("reverse") Boolean reverse, @QueryParam("limit") Integer limit) {
 			
 		try {
 			SessionAuthenticator authenticator = new DySessionAuthenticator();
 			ImageHandler imageHandler = new DyImageHandler();
 			
-			//Make sure session is valid
+			//Check if sessionId was passed in
 			if(sessionId == null) {
 				LOG.error("No session id provided in the request");
 				throw ApplicationException.SESSION_INVALID_ID;
 			}
+			
+			//Make sure session is valid
 			Session session = authenticator.getSession(sessionId);
+			if(!authenticator.isSessionValid(session)) {
+				throw ApplicationException.SESSION_EXPIRED;
+			}
+			
+			//Extract user from session
 			String userId = session.getUserId();
 			
 			//Get optional parameters
 			limit = (limit != null) ? limit : 10;
 			since = (since !=null && since > 0) ? since : 0;
+			reverse = (reverse != null) ? reverse : false;
 			
 			//Get list
-			String shardId = imageHandler.getShardId(userId, cameraId, since);
-			List<Image> images = imageHandler.listImages(shardId, since, limit);
+			CameraShard shard = imageHandler.getShard(userId, cameraId, since);
+			List<Image> images = imageHandler.listImages(shard, since, reverse, limit);
 			
 			//Too little images -- see if other shards exist
-			/*
-			while(images == null || images.size() < limit) {
-				String nextShardId = imageHandler.getNextShardId(userId, cameraId, since);
-				if(nextShardId == null) {
-					break;
-				}
-				List<Image> newImages = imageHandler.listImages(nextShardId, since, limit);
-				if(newImages != null && newImages.size() > 0) {
-					for(Image img : newImages) {
-						if(images.size() < limit) {
-							images.add(img);
-						} else {
+			if(images == null || images.size() < limit) {
+				if(!reverse) {
+					Long endTimestamp = shard.getShardEndTimestamp();
+					while(images == null || images.size() < limit) {
+						CameraShard nextShard = imageHandler.getNextShard(userId, cameraId, endTimestamp);
+						if(nextShard == null) {
+							LOG.info("No shard after userId: " + shard.getUserId() + " cameraId:" + shard.getCameraId() + " shardId: " + shard.getShardId());
 							break;
 						}
+						List<Image> images2 = imageHandler.listImages(nextShard, since, reverse, limit);
+						if(images2 != null && images2.size() > 0) {
+							for(Image i : images2) {
+								images.add(i);
+								if(images.size() >= limit) {
+									break;
+								}
+							}
+						}
+						endTimestamp = nextShard.getShardEndTimestamp();
+					}
+				}
+				//Reverse iterator
+				else {
+					Long startTimestamp = shard.getShardBeginTimestamp();
+					while(images == null || images.size() < limit) {
+						CameraShard prevShard = imageHandler.getPreviousShard(userId, cameraId, startTimestamp);
+						if(prevShard == null) {
+							LOG.info("No shard before userId: " + shard.getUserId() + " cameraId:" + shard.getCameraId() + " shardId: " + shard.getShardId());
+							break;
+						}
+						List<Image> images2 = imageHandler.listImages(prevShard, since, reverse, limit);
+						if(images2 != null && images2.size() > 0) {
+							for(Image i : images2) {
+								images.add(i);
+								if(images.size() >= limit) {
+									break;
+								}
+							}
+						}
+						startTimestamp = prevShard.getShardBeginTimestamp();
 					}
 				}
 			}
-			*/
+			
+			//Sort the final list
+			Collections.sort(images);
 			
 			//Cursor - opaque to me but will be interpreted by the underlying implementation
 			return Response.status(Status.OK).entity(new Gson().toJson(images)).build();
@@ -266,9 +337,9 @@ public class RestEasyImage {
 			Session session = authenticator.getSession(sessionId);
 			String userId = session.getUserId();
 
-			String shardId = imageHandler.getShardId(userId, cameraId, imageTS);
-			if(shardId != null && shardId.length() > 0 && imageHandler.doesImageExist(shardId, imageTS)) {
-				Image img = imageHandler.getImage(shardId, imageTS);
+			CameraShard shard = imageHandler.getShard(userId, cameraId, imageTS);
+			if(shard != null && imageHandler.doesImageExist(shard, imageTS)) {
+				Image img = imageHandler.getImage(shard, imageTS);
 				if(img != null) {
 					return Response.status(Status.OK).entity(new Gson().toJson(img)).build();
 				} else {
@@ -342,16 +413,16 @@ public class RestEasyImage {
 
 			//Validate the variation asked for, must be one of the predefined ones
 			//If not, returns original
-			ImageVariation.BlobResolution blobResolution = ImageVariation.BlobResolution.ORIGINAL;
-			for(BlobResolution res : ImageVariation.BlobResolution.values()) {
+			ImageVariation.BlobVariation blobResolution = ImageVariation.BlobVariation.ORIGINAL;
+			for(BlobVariation res : ImageVariation.BlobVariation.values()) {
 				if(res.toString().equals(variation)) {
 					blobResolution = res;
 					break;
 				}
 			}
 
-			String shardId = imageHandler.getShardId(userId, cameraId, imageTS);
-			if(imageHandler.doesImageExist(shardId, imageTS)) {
+			CameraShard shard = imageHandler.getShard(userId, cameraId, imageTS);
+			if(shard != null && imageHandler.doesImageExist(shard, imageTS)) {
 				//Get the blob handle
 				ImageVariation imgVariation = imageHandler.getImageVariation(userId, cameraId, imageTS, blobResolution);
 				assert(imgVariation.getBlobSource() == ImageVariation.BlobSource.AMAZON_S3);

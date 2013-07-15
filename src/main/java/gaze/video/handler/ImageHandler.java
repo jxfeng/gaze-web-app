@@ -1,5 +1,6 @@
 package gaze.video.handler;
 
+import gaze.video.entity.CameraShard;
 import gaze.video.entity.Image;
 import gaze.video.entity.ImageVariation;
 import gaze.video.exception.ApplicationException;
@@ -16,16 +17,16 @@ public interface ImageHandler {
 	 * @param imageTimestamp
 	 * @return
 	 */
-	public String createShard(String userId, String cameraId, Long imageTimestamp);
+	public CameraShard getShard(String userId, String cameraId, Long imageTimestamp) throws ApplicationException;
 	
 	/**
-	 * Gets the shard id using the image timestamp
+	 * Gets the previous available shard before the current shard
 	 * @param userId
 	 * @param cameraId
 	 * @param imageTimestamp
 	 * @return
 	 */
-	public String getShardId(String userId, String cameraId, Long imageTimestamp);
+	public CameraShard getPreviousShard(String userId, String cameraId, Long imageTimestamp) throws ApplicationException;
 	
 	/**
 	 * Gets the next available shard after the current shard
@@ -34,7 +35,22 @@ public interface ImageHandler {
 	 * @param imageTimestamp
 	 * @return
 	 */
-	public Long getNextShardId(String userId, String cameraId, Long imageTimestamp);
+	public CameraShard getNextShard(String userId, String cameraId, Long imageTimestamp) throws ApplicationException;
+	
+	/**
+	 * Lists available shards
+	 * @param userId
+	 * @param cameraId
+	 * @param fromTimestamp
+	 * @param reverse
+	 * @param limit
+	 * @return
+	 */
+	public List<CameraShard> listShards(String userId, String cameraId, Long fromTimestamp, Boolean reverse, Integer limit) throws ApplicationException;
+	
+	public Long getStartTimestamp(Long timestamp);
+	
+	public Long getEndTimestamp(Long timestamp);
 	
 	/**
 	 * Looks up image in the shard, creates or gets it
@@ -42,7 +58,7 @@ public interface ImageHandler {
 	 * @param timestamp
 	 * @return
 	 */
-	public Image createImage(String shardId, Long timestamp);
+	public Image createImage(CameraShard shard, Long timestamp) throws ApplicationException;
 	
 	/**
 	 * Tells if the image exists in the database or not
@@ -50,7 +66,7 @@ public interface ImageHandler {
 	 * @param timestamp
 	 * @return
 	 */
-	public boolean doesImageExist(String shardId, Long timestamp);
+	public boolean doesImageExist(CameraShard shard, Long timestamp) throws ApplicationException;
 	
 	/**
 	 * Gets all the details of the image
@@ -58,7 +74,7 @@ public interface ImageHandler {
 	 * @param timestamp
 	 * @return
 	 */
-	public Image getImage(String shardId, Long timestamp);
+	public Image getImage(CameraShard shard, Long timestamp) throws ApplicationException;
 	
 	/**
 	 * Updates the image state to new state (Image must already exist)
@@ -67,17 +83,18 @@ public interface ImageHandler {
 	 * @param newState
 	 * @return
 	 */
-	public Image updateImageState(String shardId, Long timestamp, Image.ImageState newState);
+	public Image updateImageState(CameraShard shard, Long timestamp, Image.ImageState newState) throws ApplicationException;
 	
 	/**
 	 * Lists all available images for the given camera
 	 * @param shardId
 	 * @param startTimestamp
+	 * @param reverse
 	 * @param limit
 	 * @return
 	 * @throws ApplicationException
 	 */
-	public List<Image> listImages(String shardId, Long startTimestamp, Integer limit) throws ApplicationException;
+	public List<Image> listImages(CameraShard shard, Long startTimestamp, Boolean reverse, Integer limit) throws ApplicationException;
 	
 	/**
 	 * Creates or gets the blob
@@ -89,12 +106,12 @@ public interface ImageHandler {
 	 * @return
 	 */
 	public ImageVariation createImageBlob(String userId, String cameraId, Long imageTimestamp, 
-			String blobContentType, Integer blobLengthBytes, ImageVariation.BlobSource blobSource, ImageVariation.BlobResolution blobResolution);
+			String blobContentType, Integer blobLengthBytes, ImageVariation.BlobSource blobSource, ImageVariation.BlobVariation blobResolution) throws ApplicationException;
 	
-	public ImageVariation getImageVariation(String userId, String cameraId, Long imageTimestamp, ImageVariation.BlobResolution blobResolution);
+	public ImageVariation getImageVariation(String userId, String cameraId, Long imageTimestamp, ImageVariation.BlobVariation blobResolution) throws ApplicationException;
 	
-	public List<ImageVariation> listImageVariations(String userId, String cameraId, Long imageTimestamp);
+	public List<ImageVariation> listImageVariations(String userId, String cameraId, Long imageTimestamp) throws ApplicationException;
 	
-	public ImageVariation updateImageBlobState(String userId, String cameraId, Long imageTimestamp, ImageVariation.BlobResolution blobResolution, ImageVariation.BlobState blobState);
+	public ImageVariation updateImageBlobState(String userId, String cameraId, Long imageTimestamp, ImageVariation.BlobVariation blobResolution, ImageVariation.BlobState blobState) throws ApplicationException;
 	
 }

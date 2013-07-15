@@ -1,6 +1,6 @@
 package gaze.video.entity;
 
-public class Image {
+public class Image implements Comparable<Image> {
 
 	private Long   imageTimestamp;
 	private ImageState imageState;
@@ -19,6 +19,11 @@ public class Image {
 	}
 	public void setImageState(ImageState imageState) {
 		this.imageState = imageState;
+	}
+	
+	@Override
+	public int compareTo(Image other) {
+		return (int) (this.imageTimestamp - other.imageTimestamp);
 	}
 	
 }

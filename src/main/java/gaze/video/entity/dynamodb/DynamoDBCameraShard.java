@@ -9,8 +9,10 @@ import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBTable;
 public class DynamoDBCameraShard {
 	
 	private String cameraKey;
-	private Long shardDate;
-	private String shardId;
+	private Long shardId;
+	private String userId;
+	private String cameraId;
+	private String shardKey;
 	private Boolean shardComplete;
 	//TODO: Keep track of resizer status here
 	
@@ -22,20 +24,36 @@ public class DynamoDBCameraShard {
 		this.cameraKey = cameraKey;
 	}
 	
-	@DynamoDBRangeKey(attributeName="shardDate")
-	public Long getShardDate() {
-		return shardDate;
-	}
-	public void setShardDate(Long shardDate) {
-		this.shardDate = shardDate;
-	}
-	
-	@DynamoDBAttribute(attributeName="shardId")
-	public String getShardId() {
+	@DynamoDBRangeKey(attributeName="shardId")
+	public Long getShardId() {
 		return shardId;
 	}
-	public void setShardId(String shardId) {
+	public void setShardId(Long shardId) {
 		this.shardId = shardId;
+	}
+	
+	@DynamoDBAttribute(attributeName="shardKey")
+	public String getShardKey() {
+		return shardKey;
+	}
+	public void setShardKey(String shardKey) {
+		this.shardKey = shardKey;
+	}
+	
+	@DynamoDBAttribute(attributeName="userId")
+	public String getUserId() {
+		return userId;
+	}
+	public void setUserId(String userId) {
+		this.userId = userId;
+	}
+	
+	@DynamoDBAttribute(attributeName="cameraId")
+	public String getCameraId() {
+		return cameraId;
+	}
+	public void setCameraId(String cameraId) {
+		this.cameraId = cameraId;
 	}
 
 	@DynamoDBAttribute(attributeName="shardComplete")
@@ -46,6 +64,4 @@ public class DynamoDBCameraShard {
 		this.shardComplete = shardComplete;
 	}
 
-	
-	
 }
