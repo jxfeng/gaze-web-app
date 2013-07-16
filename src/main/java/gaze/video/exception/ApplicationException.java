@@ -39,6 +39,7 @@ public class ApplicationException extends Exception {
 	public static final ApplicationException BLOB_FETCH_FAILED;
 	
 	public static final ApplicationException SHARD_QUERY_FAILED;
+	public static final ApplicationException SHARD_INVALID_SHARD_ID;
 	
 	static {
 		//SESSION - 5000
@@ -77,6 +78,7 @@ public class ApplicationException extends Exception {
 		BLOB_FETCH_FAILED = new ApplicationException(9005, "Could not fetch blob from S3");
 		//SHARD - 10000
 		SHARD_QUERY_FAILED = new ApplicationException(10001, "Shard query failed");
+		SHARD_INVALID_SHARD_ID = new ApplicationException(10002, "Invalid shard id");
 	}
 	
 	private final Integer errorCode;

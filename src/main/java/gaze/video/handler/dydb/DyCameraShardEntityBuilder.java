@@ -12,10 +12,10 @@ public class DyCameraShardEntityBuilder {
 	public static CameraShard build(DynamoDBCameraShard dyShard) {
 		CameraShard shard = new CameraShard();
 		shard.setUserId(dyShard.getUserId());
-		shard.setCameraId(dyShard.getCameraKey());
+		shard.setCameraId(dyShard.getCameraId());
 		shard.setShardId(dyShard.getShardId());
-		shard.setShardBeginTimestamp(new DyImageHandler().getStartTimestamp(dyShard.getShardId()));
-		shard.setShardEndTimestamp(new DyImageHandler().getEndTimestamp(dyShard.getShardId()));
+		shard.setShardBeginTimestamp(DyConfiguration.getStartTimestamp(dyShard.getShardId()));
+		shard.setShardEndTimestamp(DyConfiguration.getEndTimestamp(dyShard.getShardId()));
 		return shard;
 	}
 	

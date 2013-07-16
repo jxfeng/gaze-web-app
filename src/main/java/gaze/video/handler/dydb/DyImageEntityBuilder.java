@@ -1,14 +1,10 @@
 package gaze.video.handler.dydb;
 
-import gaze.video.entity.Camera;
 import gaze.video.entity.Image;
-import gaze.video.entity.dynamodb.DynamoDBCamera;
 import gaze.video.entity.dynamodb.DynamoDBImage;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import com.amazonaws.services.ec2.model.ImageState;
 
 public class DyImageEntityBuilder {
 

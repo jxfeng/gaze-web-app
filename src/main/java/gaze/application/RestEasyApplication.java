@@ -5,6 +5,7 @@ import gaze.video.resteasyapi.RestEasyCamera;
 import gaze.video.resteasyapi.RestEasyHealthCheck;
 import gaze.video.resteasyapi.RestEasyImage;
 import gaze.video.resteasyapi.RestEasyLogout;
+import gaze.video.resteasyapi.RestEasyStats;
 import gaze.video.resteasyapi.RestEasyUser;
 
 import java.util.HashSet;
@@ -24,6 +25,7 @@ public class RestEasyApplication extends Application {
 		singletons.add(new RestEasyUser());
 		singletons.add(new RestEasyCamera());
 		singletons.add(new RestEasyImage());
+		singletons.add(new RestEasyStats());
 	}
 	
 	@Override

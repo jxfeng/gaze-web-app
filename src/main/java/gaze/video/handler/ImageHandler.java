@@ -48,10 +48,6 @@ public interface ImageHandler {
 	 */
 	public List<CameraShard> listShards(String userId, String cameraId, Long fromTimestamp, Boolean reverse, Integer limit) throws ApplicationException;
 	
-	public Long getStartTimestamp(Long timestamp);
-	
-	public Long getEndTimestamp(Long timestamp);
-	
 	/**
 	 * Looks up image in the shard, creates or gets it
 	 * @param shardId

@@ -6,15 +6,12 @@ import gaze.video.entity.ImageVariation;
 import gaze.video.entity.Image.ImageState;
 import gaze.video.entity.ImageVariation.BlobVariation;
 import gaze.video.entity.ImageVariation.BlobSource;
-import gaze.video.entity.dynamodb.DynamoDBCamera;
 import gaze.video.entity.dynamodb.DynamoDBCameraShard;
 import gaze.video.entity.dynamodb.DynamoDBImage;
 import gaze.video.entity.dynamodb.DynamoDBImageVariation;
 import gaze.video.exception.ApplicationException;
 import gaze.video.handler.ImageHandler;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,8 +51,8 @@ public class DyImageHandler implements ImageHandler {
 	@Override
 	public CameraShard getShard(String userId, String cameraId, Long imageTimestamp)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		Long shardId = getShardId(imageTimestamp);
-		String cameraKey = generateCameraKey(userId, cameraId);
+		Long shardId = DyConfiguration.getShardId(imageTimestamp);
+		String cameraKey = DyConfiguration.generateCameraKey(userId, cameraId);
 		DynamoDBCameraShard dShard = mapper.load(DynamoDBCameraShard.class, cameraKey, shardId);
 		
 		//Return existing
@@ -73,7 +70,7 @@ public class DyImageHandler implements ImageHandler {
 			dShard.setCameraKey(cameraKey);
 			dShard.setShardId(shardId);
 			dShard.setShardComplete(false);
-			dShard.setShardKey(getShardKey(userId, cameraId, imageTimestamp));
+			dShard.setShardKey(DyConfiguration.getShardKey(userId, cameraId, imageTimestamp));
 			mapper.save(dShard);
 			return DyCameraShardEntityBuilder.build(dShard);
 		}
@@ -100,8 +97,8 @@ public class DyImageHandler implements ImageHandler {
 	@Override
 	public List<CameraShard> listShards(String userId, String cameraId, Long fromTimestamp, Boolean reverse, Integer limit)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		Long shardId = getShardId(fromTimestamp);
-		String cameraKey = generateCameraKey(userId, cameraId);
+		Long shardId = DyConfiguration.getShardId(fromTimestamp);
+		String cameraKey = DyConfiguration.generateCameraKey(userId, cameraId);
 		
 		//Match hash key
 		Map<String, Condition> keyConditions = new HashMap<String, Condition>();
@@ -150,8 +147,8 @@ public class DyImageHandler implements ImageHandler {
 	@Override
 	public Image createImage(CameraShard shard, Long timestamp)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String shardKey = getShardKey(shard);
-		String imageKey = getImageKey(shardKey, timestamp);
+		String shardKey = DyConfiguration.getShardKey(shard);
+		String imageKey = DyConfiguration.getImageKey(shardKey, timestamp);
 		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardKey, imageKey);
 		
 		//Image entry already exists
@@ -181,8 +178,8 @@ public class DyImageHandler implements ImageHandler {
 	@Override
 	public Image getImage(CameraShard shard, Long timestamp)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String shardKey = getShardKey(shard);
-		String imageKey = getImageKey(shardKey, timestamp);
+		String shardKey = DyConfiguration.getShardKey(shard);
+		String imageKey = DyConfiguration.getImageKey(shardKey, timestamp);
 		
 		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardKey, imageKey);
 		if(dImage != null) {
@@ -197,8 +194,8 @@ public class DyImageHandler implements ImageHandler {
 	@Override
 	public Image updateImageState(CameraShard shard, Long timestamp, ImageState newState)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String shardKey = getShardKey(shard);
-		String imageKey = getImageKey(shardKey, timestamp);
+		String shardKey = DyConfiguration.getShardKey(shard);
+		String imageKey = DyConfiguration.getImageKey(shardKey, timestamp);
 		
 		DynamoDBImage dImage = mapper.load(DynamoDBImage.class, shardKey, imageKey);
 		if(dImage != null) {
@@ -215,7 +212,7 @@ public class DyImageHandler implements ImageHandler {
 	@Override
 	public List<Image> listImages(CameraShard shard, Long since, Boolean reverse, Integer limit) throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String shardKey = getShardKey(shard);
+		String shardKey = DyConfiguration.getShardKey(shard);
 
 		//Fix input arguments
 		limit = (limit != null) ? Math.max(1, Math.min(limit, 100)) : 10;
@@ -233,12 +230,12 @@ public class DyImageHandler implements ImageHandler {
 			if(!reverse) {
 				Condition rangeKeyCondition = new Condition()
 				.withComparisonOperator(ComparisonOperator.GT.toString())
-				.withAttributeValueList(new AttributeValue().withS(getImageKey(shardKey, since)));
+				.withAttributeValueList(new AttributeValue().withS(DyConfiguration.getImageKey(shardKey, since)));
 				keyConditions.put("imageKey", rangeKeyCondition);
 			} else {
 				Condition rangeKeyCondition = new Condition()
 				.withComparisonOperator(ComparisonOperator.LT.toString())
-				.withAttributeValueList(new AttributeValue().withS(getImageKey(shardKey, since)));
+				.withAttributeValueList(new AttributeValue().withS(DyConfiguration.getImageKey(shardKey, since)));
 				keyConditions.put("imageKey", rangeKeyCondition);
 			}
 		}
@@ -267,7 +264,7 @@ public class DyImageHandler implements ImageHandler {
 	public ImageVariation createImageBlob(String userId, String cameraId, Long imageTimestamp, String blobContentType, 
 			Integer blobLengthBytes, BlobSource blobSource, BlobVariation blobResolution)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = getImageKey(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
+		String imageKey = DyConfiguration.getImageKey(DyConfiguration.getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
 		String blobResolutionString = blobResolution.toString();
 		DynamoDBImageVariation dImageBlob = mapper.load(DynamoDBImageVariation.class, imageKey, blobResolutionString);
 		if(dImageBlob != null) {
@@ -278,7 +275,7 @@ public class DyImageHandler implements ImageHandler {
 			dImageBlob.setImageKey(imageKey);
 			dImageBlob.setImageVariation(blobResolutionString);
 			dImageBlob.setBlobSource(blobSource.toString());
-			dImageBlob.setBlobId(generateBlobId(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp, blobResolution));
+			dImageBlob.setBlobId(DyConfiguration.generateBlobId(DyConfiguration.getShardKey(userId, cameraId, imageTimestamp), imageTimestamp, blobResolution));
 			dImageBlob.setBlobContentType(blobContentType);
 			dImageBlob.setBlobLengthBytes(blobLengthBytes);
 			mapper.save(dImageBlob);
@@ -291,7 +288,7 @@ public class DyImageHandler implements ImageHandler {
 			ImageVariation.BlobVariation blobResolution)  throws ApplicationException {
 		
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = getImageKey(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
+		String imageKey = DyConfiguration.getImageKey(DyConfiguration.getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
 		String blobResolutionString = blobResolution.toString();
 		DynamoDBImageVariation dImageBlob = mapper.load(DynamoDBImageVariation.class, imageKey, blobResolutionString);
 		if(dImageBlob != null) {
@@ -314,7 +311,7 @@ public class DyImageHandler implements ImageHandler {
 	public ImageVariation updateImageBlobState(String userId, String cameraId, Long imageTimestamp, 
 			BlobVariation blobResolution, ImageVariation.BlobState blobState)  throws ApplicationException {
 		DynamoDBMapper mapper = new DynamoDBMapper(client);
-		String imageKey = getImageKey(getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
+		String imageKey = DyConfiguration.getImageKey(DyConfiguration.getShardKey(userId, cameraId, imageTimestamp), imageTimestamp);
 		String blobResolutionString = blobResolution.toString();
 		DynamoDBImageVariation dImageBlob = mapper.load(DynamoDBImageVariation.class, imageKey, blobResolutionString);
 		if(dImageBlob != null) {
@@ -325,42 +322,5 @@ public class DyImageHandler implements ImageHandler {
 		}
 		return null;
 	}
-	
-	@Override
-	public Long getStartTimestamp(Long shardId) {
-		Long startTimestamp = shardId * 1000000000;
-		return startTimestamp;
-	}
-	
-	@Override
-	public Long getEndTimestamp(Long shardId) {
-		Long endTimestamp = ((shardId + 1) * 1000000000) - 1;
-		return endTimestamp;
-	}
-	
-	private Long getShardId(Long timestamp) {
-		return timestamp/1000000000;
-	}
-	
-	private String generateCameraKey(String userId, String cameraId) {
-		return "user-" + userId + "-camera-" + cameraId;
-	}
-	
-	private String getShardKey(CameraShard shard) {
-		return getShardKey(shard.getUserId(), shard.getCameraId(), shard.getShardBeginTimestamp());
-	}
-	
-	private String getShardKey(String userId, String cameraId, Long timestamp) {
-		return "user-" + userId + "-camera-" + cameraId + "-shard-" + String.format("%010d", getShardId(timestamp));
-	}
-	
-	private String getImageKey(String shardKey, Long timestamp) {
-		return shardKey + "-imagets-" + String.format("%020d", timestamp);
-	}
-
-	private String generateBlobId(String shardKey, Long timestamp, BlobVariation blobResolution) {
-		return shardKey + "-imagets-" + String.format("%020d", timestamp) + "-resolution-" + blobResolution.toString();
-	}
-
 
 }
